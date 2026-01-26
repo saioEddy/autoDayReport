@@ -1,0 +1,218 @@
+"""
+Git服务层 - 处理Git仓库相关的业务逻辑（跨平台兼容）
+"""
+import os
+import sys
+import subprocess
+import shutil
+from datetime import datetime, timedelta
+from typing import List, Dict
+from pathlib import Path
+
+
+class GitService:
+    """Git仓库服务类"""
+    
+    def __init__(self):
+        self.git_repos = []
+    
+    def discover_git_repos(self, root_path: str = None) -> List[str]:
+        """
+        自动发现本地Git仓库（跨平台兼容）
+        
+        Args:
+            root_path: 搜索的根路径，默认为用户主目录
+            
+        Returns:
+            Git仓库路径列表
+        """
+        if root_path is None:
+            root_path = os.path.expanduser("~")
+        
+        # 确保路径是绝对路径，跨平台兼容
+        root_path = os.path.abspath(os.path.expanduser(root_path))
+        
+        if not os.path.exists(root_path):
+            print(f"警告: 搜索路径不存在: {root_path}")
+            return []
+        
+        if not os.path.isdir(root_path):
+            print(f"警告: 搜索路径不是目录: {root_path}")
+            return []
+        
+        git_repos = []
+        
+        # 递归搜索.git目录，添加异常处理以处理权限问题（Windows常见）
+        try:
+            for root, dirs, files in os.walk(root_path):
+                # 先检查当前目录是否有.git目录（在过滤之前检查）
+                if '.git' in dirs:
+                    # 使用os.path.normpath确保路径格式正确（Windows兼容）
+                    repo_path = os.path.normpath(root)
+                    git_repos.append(repo_path)
+                    # 找到.git后不再深入搜索该目录，从dirs中移除
+                    dirs.remove('.git')
+                
+                # 跳过一些常见的非项目目录以提高效率（在检查.git之后过滤）
+                # Windows上可能还有额外的目录需要排除
+                exclude_dirs = ['node_modules', '.venv', 'venv', '__pycache__', '.idea', '.vscode', '.cursor']
+                # Windows特定目录
+                if sys.platform == 'win32':
+                    exclude_dirs.extend(['AppData', 'Application Data', 'Local Settings'])
+                dirs[:] = [d for d in dirs if d not in exclude_dirs]
+        except PermissionError as e:
+            print(f"警告: 访问目录时权限不足: {str(e)}")
+        except Exception as e:
+            print(f"警告: 搜索Git仓库时出错: {str(e)}")
+        
+        self.git_repos = git_repos
+        return git_repos
+    
+    def get_today_commits(self, repo_path: str) -> List[Dict]:
+        """
+        获取指定仓库今日的所有提交记录
+        
+        Args:
+            repo_path: Git仓库路径
+            
+        Returns:
+            提交记录列表，每个记录包含：author, date, message, hash
+        """
+        if not os.path.exists(os.path.join(repo_path, '.git')):
+            return []
+        
+        # 获取今日的开始和结束时间
+        today = datetime.now().date()
+        start_time = datetime.combine(today, datetime.min.time())
+        end_time = datetime.combine(today, datetime.max.time())
+        
+        # 格式化时间用于git log查询
+        start_str = start_time.strftime('%Y-%m-%d 00:00:00')
+        end_str = end_time.strftime('%Y-%m-%d 23:59:59')
+        
+        commits = []
+        
+        try:
+            # 切换到仓库目录（使用绝对路径，跨平台兼容）
+            original_dir = os.getcwd()
+            repo_path_abs = os.path.abspath(repo_path)
+            os.chdir(repo_path_abs)
+            
+            # 执行git log命令，获取今日所有提交
+            # 使用--all获取所有分支的提交
+            # 跨平台检测git命令位置
+            git_cmd = shutil.which('git') or 'git'  # 优先使用which找到的git路径，找不到则使用'git'
+            
+            cmd = [git_cmd, 'log']
+            cmd.extend([
+                '--all',
+                '--since', start_str,
+                '--until', end_str,
+                '--pretty=format:%H|%an|%ad|%s',
+                '--date=format:%Y-%m-%d %H:%M:%S'
+            ])
+            
+            # Windows上设置shell=False，但需要处理可能的编码问题
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                shell=False,  # 跨平台兼容，不使用shell
+                encoding='utf-8',  # 明确指定编码
+                errors='replace'  # 编码错误时替换而不是抛出异常
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                for line in result.stdout.strip().split('\n'):
+                    if '|' in line:
+                        parts = line.split('|', 3)
+                        if len(parts) >= 4:
+                            commits.append({
+                                'hash': parts[0][:7],  # 短hash
+                                'author': parts[1],
+                                'date': parts[2],
+                                'message': parts[3],
+                                'repo': os.path.basename(repo_path)
+                            })
+            
+            os.chdir(original_dir)
+            
+        except subprocess.TimeoutExpired:
+            print(f"警告: 获取仓库 {repo_path} 的提交记录超时")
+        except Exception as e:
+            print(f"错误: 获取仓库 {repo_path} 的提交记录失败: {str(e)}")
+        
+        return commits
+    
+    def get_all_today_commits(self, repo_paths: List[str] = None) -> List[Dict]:
+        """
+        获取所有指定仓库今日的提交记录
+        
+        Args:
+            repo_paths: Git仓库路径列表，如果为None则使用discover_git_repos的结果
+            
+        Returns:
+            所有仓库今日的提交记录列表
+        """
+        if repo_paths is None:
+            repo_paths = self.git_repos if self.git_repos else self.discover_git_repos()
+        
+        all_commits = []
+        
+        for repo_path in repo_paths:
+            commits = self.get_today_commits(repo_path)
+            all_commits.extend(commits)
+        
+        # 按时间排序
+        all_commits.sort(key=lambda x: x.get('date', ''), reverse=True)
+        
+        return all_commits
+    
+    def get_current_author(self, repo_path: str = None) -> str:
+        """
+        获取本人 Git 用户名（user.name），用于区分本人/他人提交。
+        优先使用指定仓库的 local 配置，否则使用 global。
+        
+        Args:
+            repo_path: 可选，某仓库路径。若提供则优先读该仓库的 user.name
+            
+        Returns:
+            当前用户 Git 名称，获取失败时返回空字符串
+        """
+        git_cmd = shutil.which('git') or 'git'
+        cmd = [git_cmd, 'config', 'user.name']
+        cwd = None
+        if repo_path and os.path.exists(os.path.join(os.path.abspath(repo_path), '.git')):
+            # 在指定仓库下读 local 配置
+            cwd = os.path.abspath(repo_path)
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                shell=False,
+                encoding='utf-8',
+                errors='replace',
+                cwd=cwd,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+            # local 无配置时尝试 global
+            if cwd:
+                global_cmd = [git_cmd, 'config', '--global', 'user.name']
+                r2 = subprocess.run(
+                    global_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    shell=False,
+                    encoding='utf-8',
+                    errors='replace',
+                )
+                if r2.returncode == 0 and r2.stdout.strip():
+                    return r2.stdout.strip()
+        except Exception as e:
+            print(f"警告: 获取 Git user.name 失败: {e}")
+        return ''

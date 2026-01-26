@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# 日报文件
+reports/
+*.txt
+
+# IDE
+.idea/
+.vscode/
+.cursor/
+
+# 系统文件
+.DS_Store
+Thumbs.db
