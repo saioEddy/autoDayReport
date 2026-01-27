@@ -7,8 +7,8 @@ from datetime import datetime
 from service.git_service import GitService
 from service.report_service import ReportService
 from service.deepseek_service import DeepSeekService
-# from service.crm_service import CRMService
-# from config import CRM_URL, CRM_USERNAME, CRM_PASSWORD
+from service.crm_service import CRMService
+from config import CRM_URL, CRM_USERNAME, CRM_PASSWORD
 
 
 def main():
@@ -117,26 +117,39 @@ def main():
     
     print(f"\n日报生成完成 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    # # 7. 自动发布到 CRM 系统（可选）
-    # print("\n是否要自动发布到 CRM 系统? (y/n): ", end="")
-    # choice = input().strip().lower()
-    # if choice == 'y':
-    #     from service.crm_service import CRMService
-    #     from config import CRM_URL, CRM_USERNAME, CRM_PASSWORD
-    #     
-    #     print("\n正在登录 CRM 系统...")
-    #     crm_service = CRMService(CRM_URL, CRM_USERNAME, CRM_PASSWORD)
-    #     
-    #     if crm_service.login():
-    #         print("正在发布日报...")
-    #         if crm_service.publish_report(brief):
-    #             print("✓ 日报发布成功")
-    #         else:
-    #             print("✗ 日报发布失败")
-    #     else:
-    #         print("✗ CRM 登录失败")
-    #     
-    #     crm_service.close()
+    # 7. 自动发布到 CRM 系统（可选）
+    print("\n" + "=" * 60)
+    print("是否要自动发布到 CRM 系统? (y/n): ", end="")
+    choice = input().strip().lower()
+    
+    if choice == 'y':
+        print("\n正在登录 CRM 系统...")
+        crm_service = CRMService(CRM_URL, CRM_USERNAME, CRM_PASSWORD)
+        
+        try:
+            if crm_service.login():
+                print("✓ CRM 登录成功")
+                print("\n正在发布日报...")
+                if crm_service.publish_report(brief):
+                    print("\n" + "=" * 60)
+                    print("✓ 日报发布成功！")
+                    print("=" * 60)
+                else:
+                    print("\n" + "=" * 60)
+                    print("✗ 日报发布失败")
+                    print("=" * 60)
+            else:
+                print("\n" + "=" * 60)
+                print("✗ CRM 登录失败")
+                print("=" * 60)
+        except Exception as e:
+            print(f"\n✗ CRM 发布过程出错: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            crm_service.close()
+    else:
+        print("跳过 CRM 自动发布")
 
 
 if __name__ == "__main__":
