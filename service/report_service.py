@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional
 from collections import defaultdict
+from config import BRIEF_SYSTEM_MODIFIER
 
 
 class ReportService:
@@ -180,12 +181,15 @@ class ReportService:
             "1. 上午和下午的工作内容要基于提交记录合理分配时间\n"
             "2. 时间格式为：HH:MM-HH:MM（例如：09:00-12:00）\n"
             "3. 学习内容要合理，可以基于工作内容推断相关技术学习\n"
-            "4. 只输出这三个字段的内容，不要添加标题、日期等前缀"
+            "4. 只输出这三个字段的内容，不要添加标题、日期等前缀\n"
+            "5. 今日计划的学习内容与进度随机生成,有时生成有时候不生成,占比百分之50,如果本次不生成,生成一个无\n"
+            
         )
 
         if my_commits:
             system = (
-                "你是工作日报助手。请根据本人今日的 Git 提交记录，生成符合系统格式要求的工作简报。"
+                "你是工作日报助手。请根据本人今日的 Git 提交记录，生成符合系统格式要求的工作简报。\n\n"
+                f"{BRIEF_SYSTEM_MODIFIER}\n\n"
                 + format_instruction
             )
             user = "本人今日提交如下：\n" + self._format_commits_for_prompt(my_commits)
@@ -194,7 +198,8 @@ class ReportService:
                 "你是工作日报助手。本人今日无 Git 提交。请根据以下「他人的」今日提交记录，"
                 "生成本人今日工作简报。简报须体现本人「协助、支持他人工作」的角色，"
                 "用概括性语言说明协助了哪些方面（如评审、联调、支持、协作等），"
-                "不要直接照搬他人的提交内容，避免与同事的日报雷同。"
+                "不要直接照搬他人的提交内容，避免与同事的日报雷同。\n\n"
+                f"{BRIEF_SYSTEM_MODIFIER}\n\n"
                 + format_instruction
             )
             user = "他人今日提交如下：\n" + self._format_commits_for_prompt(others_commits)
