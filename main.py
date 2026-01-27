@@ -7,6 +7,8 @@ from datetime import datetime
 from service.git_service import GitService
 from service.report_service import ReportService
 from service.deepseek_service import DeepSeekService
+# from service.crm_service import CRMService
+# from config import CRM_URL, CRM_USERNAME, CRM_PASSWORD
 
 
 def main():
@@ -28,7 +30,7 @@ def main():
     else:
         # 尝试多个常见的项目目录（跨平台）
         possible_paths = [
-            os.path.expanduser("~/Documents/开发代码"),  # macOS/Linux常见路径 
+            #os.path.expanduser("~/Documents/开发代码"),  # macOS/Linux常见路径 
             os.path.expanduser("~/Desktop/vankun/code"),  
             # os.path.expanduser("~/Projects"),            # macOS常见项目目录
             # os.path.expanduser("~/code"),                # 常见代码目录
@@ -114,6 +116,27 @@ def main():
     print("-" * 60)
     
     print(f"\n日报生成完成 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # # 7. 自动发布到 CRM 系统（可选）
+    # print("\n是否要自动发布到 CRM 系统? (y/n): ", end="")
+    # choice = input().strip().lower()
+    # if choice == 'y':
+    #     from service.crm_service import CRMService
+    #     from config import CRM_URL, CRM_USERNAME, CRM_PASSWORD
+    #     
+    #     print("\n正在登录 CRM 系统...")
+    #     crm_service = CRMService(CRM_URL, CRM_USERNAME, CRM_PASSWORD)
+    #     
+    #     if crm_service.login():
+    #         print("正在发布日报...")
+    #         if crm_service.publish_report(brief):
+    #             print("✓ 日报发布成功")
+    #         else:
+    #             print("✗ 日报发布失败")
+    #     else:
+    #         print("✗ CRM 登录失败")
+    #     
+    #     crm_service.close()
 
 
 if __name__ == "__main__":
