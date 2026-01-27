@@ -9,6 +9,8 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 from pathlib import Path
 
+from config import EXCLUDE_DIRS
+
 
 class GitService:
     """Git仓库服务类"""
@@ -53,12 +55,10 @@ class GitService:
                     # 找到.git后不再深入搜索该目录，从dirs中移除
                     dirs.remove('.git')
                 
-                # 跳过一些常见的非项目目录以提高效率（在检查.git之后过滤）
-                # Windows上可能还有额外的目录需要排除
-                exclude_dirs = ['node_modules', '.venv', 'venv', '__pycache__', '.idea', '.vscode', '.cursor']
-                # Windows特定目录
-                if sys.platform == 'win32':
-                    exclude_dirs.extend(['AppData', 'Application Data', 'Local Settings'])
+                # 使用 config.EXCLUDE_DIRS 排除非项目目录；Windows 追加平台特定目录
+                exclude_dirs = list(EXCLUDE_DIRS)
+                if sys.platform == "win32":
+                    exclude_dirs.extend(["AppData", "Application Data", "Local Settings"])
                 dirs[:] = [d for d in dirs if d not in exclude_dirs]
         except PermissionError as e:
             print(f"警告: 访问目录时权限不足: {str(e)}")

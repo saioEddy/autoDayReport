@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional
 from collections import defaultdict
-from config import BRIEF_SYSTEM_MODIFIER
+from config import BRIEF_SYSTEM_MODIFIER, REPORT_SAVE_DIR, REPORT_FILE_FORMAT, BRIEF_FILE_FORMAT
 
 
 class ReportService:
@@ -121,18 +121,12 @@ class ReportService:
             保存的文件路径
         """
         if file_path is None:
-            # 默认保存到当前目录的reports文件夹（跨平台兼容）
-            import os
-            # 使用os.path.join确保跨平台路径正确
-            reports_dir = os.path.join(os.getcwd(), 'reports')
-            # 使用os.makedirs的exist_ok参数，跨平台兼容
+            reports_dir = REPORT_SAVE_DIR
             os.makedirs(reports_dir, exist_ok=True)
-            
-            filename = f"日报_{datetime.now().strftime('%Y%m%d')}.txt"
+            filename = REPORT_FILE_FORMAT.format(date=datetime.now().strftime("%Y%m%d"))
             file_path = os.path.join(reports_dir, filename)
         
         # 确保目录存在（跨平台兼容）
-        import os
         file_dir = os.path.dirname(file_path)
         if file_dir:  # 如果路径包含目录部分
             os.makedirs(file_dir, exist_ok=True)
@@ -221,9 +215,9 @@ class ReportService:
             保存的文件路径
         """
         if file_path is None:
-            reports_dir = os.path.join(os.getcwd(), "reports")
+            reports_dir = REPORT_SAVE_DIR
             os.makedirs(reports_dir, exist_ok=True)
-            filename = f"简报_{datetime.now().strftime('%Y%m%d')}.txt"
+            filename = BRIEF_FILE_FORMAT.format(date=datetime.now().strftime("%Y%m%d"))
             file_path = os.path.join(reports_dir, filename)
         file_dir = os.path.dirname(file_path)
         if file_dir:

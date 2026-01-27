@@ -8,7 +8,13 @@ from service.git_service import GitService
 from service.report_service import ReportService
 from service.deepseek_service import DeepSeekService
 from service.crm_service import CRMService
-from config import CRM_URL, CRM_USERNAME, CRM_PASSWORD
+from config import (
+    CRM_URL,
+    CRM_USERNAME,
+    CRM_PASSWORD,
+    GIT_REPO_SEARCH_PATH,
+    GIT_SEARCH_PATHS,
+)
 
 
 def main():
@@ -22,42 +28,25 @@ def main():
     
     # 1. 自动发现Git仓库
     print("正在搜索本地Git仓库...")
-    # 跨平台兼容的默认路径选择
-    # 优先使用环境变量，其次尝试多个常见的项目目录（同时搜索多个路径）
-    if 'GIT_REPO_SEARCH_PATH' in os.environ:
-        # 如果设置了环境变量，只搜索指定的路径
-        search_paths = [os.environ['GIT_REPO_SEARCH_PATH']]
+    # 优先使用环境变量 GIT_REPO_SEARCH_PATH；否则使用 config.GIT_SEARCH_PATHS
+    if "GIT_REPO_SEARCH_PATH" in os.environ:
+        search_paths = [os.environ["GIT_REPO_SEARCH_PATH"]]
     else:
-        # 尝试多个常见的项目目录（跨平台）
-        possible_paths = [
-            #os.path.expanduser("~/Documents/开发代码"),  # macOS/Linux常见路径 
-            os.path.expanduser("~/Desktop/vankun/code"),  
-            # os.path.expanduser("~/Projects"),            # macOS常见项目目录
-            # os.path.expanduser("~/code"),                # 常见代码目录
-            # os.path.expanduser("~"),                     # 用户主目录（最后备选）
-        ]
-        
-        # Windows特定路径
-        if sys.platform == 'win32':
-            # Windows上Documents路径
+        possible_paths = list(GIT_SEARCH_PATHS)
+        if sys.platform == "win32":
             win_docs = os.path.join(os.path.expanduser("~"), "Documents")
             if os.path.exists(win_docs):
                 possible_paths.insert(0, win_docs)
-            # Windows上常见项目目录
             win_projects = os.path.join(os.path.expanduser("~"), "Documents", "Projects")
             if os.path.exists(win_projects):
                 possible_paths.insert(0, win_projects)
-        
-        # 收集所有存在的路径（而不是只选择第一个）
         search_paths = []
         for path in possible_paths:
-            expanded_path = os.path.abspath(os.path.expanduser(path))
-            if os.path.exists(expanded_path) and os.path.isdir(expanded_path):
-                search_paths.append(expanded_path)
-    
-    # 如果没有任何路径存在，使用用户主目录作为默认值
+            expanded = os.path.abspath(os.path.expanduser(path))
+            if os.path.exists(expanded) and os.path.isdir(expanded):
+                search_paths.append(expanded)
     if not search_paths:
-        search_paths = [os.path.abspath(os.path.expanduser("~"))]
+        search_paths = [os.path.abspath(os.path.expanduser(GIT_REPO_SEARCH_PATH))]
     
     # 显示所有搜索路径
     print(f"搜索路径 ({len(search_paths)} 个):")
