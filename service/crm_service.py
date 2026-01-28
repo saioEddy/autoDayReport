@@ -231,207 +231,55 @@ class CRMService:
             if login_success:
                 print("\n✓ 登录成功")
                 
-                # 登录成功后，先点击"OA表单"菜单，然后点击"工作汇报"
-                print("\n第一步: 查找并点击'OA表单'菜单...")
+                # ========== 旧代码：通过点击菜单导航到工作汇报页面（已废弃） ==========
+                # # 登录成功后，先点击"OA表单"菜单，然后点击"工作汇报"
+                # print("\n第一步: 查找并点击'OA表单'菜单...")
+                # ... (旧代码已注释，约200行)
+                # ========== 旧代码结束 ==========
                 
-                # 等待页面完全加载，特别是左侧菜单
-                print("  等待左侧菜单加载...")
-                time.sleep(5)  # 增加等待时间
+                # 新方法：登录成功后直接访问工作汇报页面URL
+                print("\n正在直接访问工作汇报页面...")
                 
-                # 尝试等待左侧菜单容器出现
-                try:
-                    self.page.wait_for_selector('nav#pageleft_unfold', timeout=10000)
-                    print("  ✓ 左侧菜单容器已加载")
-                except:
-                    print("  ⚠ 左侧菜单容器加载超时，继续尝试...")
-                
-                # 根据你提供的 DOM 路径查找"OA表单"
-                # DOM Path: nav#pageleft_unfold > div#suspensionmenu > div.nav-menu-body > div.limScrollDiv > div.ub-menu > div.page-menu > ul > li[5] > div.page-link .elected > a > span
-                oa_form_selectors = [
-                    'nav#pageleft_unfold ul.page-menu li:nth-child(5) a',  # 根据 li[5] 定位
-                    'nav#pageleft_unfold ul.page-menu li:nth-child(5) div.page-link a',
-                    'nav#pageleft_unfold ul li:nth-child(5) span:has-text("OA表单")',
-                    'nav#pageleft_unfold ul li:nth-child(5) a span:has-text("OA表单")',
-                    'nav#pageleft_unfold a span:has-text("OA表单")',
-                    'nav#pageleft_unfold span:has-text("OA表单")',
-                    'div.page-menu li:nth-child(5) a',
-                    'span:has-text("OA表单")',
-                ]
-                
-                # 调试: 打印菜单项
-                print("\n  调试: 查找左侧菜单项...")
-                try:
-                    menu_items = self.page.locator('nav#pageleft_unfold ul.page-menu li').all()
-                    print(f"  找到 {len(menu_items)} 个菜单项:")
-                    for i, item in enumerate(menu_items):
-                        try:
-                            item_text = item.inner_text().strip() if item.inner_text() else ''
-                            is_visible = item.is_visible()
-                            print(f"    [{i+1}] text='{item_text}', visible={is_visible}")
-                        except:
-                            pass
-                except Exception as e:
-                    print(f"    调试信息获取失败: {e}")
-                
-                oa_form_link = None
-                
-                # 方法1: 直接查找包含"OA表单"文本的元素
-                try:
-                    oa_form_span = self.page.locator('span:has-text("OA表单")').first
-                    if oa_form_span.is_visible():
-                        # 找到父级 a 标签
-                        try:
-                            parent_a = oa_form_span.locator('xpath=ancestor::a[1]')
-                            if parent_a.count() > 0:
-                                oa_form_link = parent_a.first
-                                print(f"  ✓ 找到'OA表单'菜单 (通过span的父级a)")
-                        except:
-                            # 如果找不到父级 a，尝试查找父级 div.page-link > a
-                            try:
-                                parent_div = oa_form_span.locator('xpath=ancestor::div[contains(@class, "page-link")][1]')
-                                if parent_div.count() > 0:
-                                    parent_a = parent_div.locator('a').first
-                                    if parent_a.count() > 0:
-                                        oa_form_link = parent_a.first
-                                        print(f"  ✓ 找到'OA表单'菜单 (通过div.page-link > a)")
-                            except:
-                                pass
-                except:
-                    pass
-                
-                # 方法2: 如果方法1失败，尝试使用选择器列表
-                if not oa_form_link:
-                    for selector in oa_form_selectors:
-                        try:
-                            print(f"  尝试选择器: {selector}")
-                            locators = self.page.locator(selector).all()
-                            for loc in locators:
-                                try:
-                                    if loc.is_visible():
-                                        # 验证文本内容
-                                        link_text = loc.inner_text().strip() if loc.inner_text() else ''
-                                        if 'OA表单' in link_text:
-                                            oa_form_link = loc
-                                            print(f"  ✓ 找到'OA表单'菜单: {selector}")
-                                            print(f"    菜单文本: {link_text}")
-                                            break
-                                except Exception as e:
-                                    print(f"    检查元素时出错: {e}")
-                                    continue
-                            if oa_form_link:
-                                break
-                        except Exception as e:
-                            print(f"    选择器 {selector} 出错: {e}")
-                            continue
-                
-                if oa_form_link:
-                    try:
-                        # 确保元素在视口中（滚动到可见）
-                        oa_form_link.scroll_into_view_if_needed()
-                        time.sleep(0.5)
-                        
-                        # 点击"OA表单"菜单
-                        oa_form_link.click()
-                        print("  ✓ 已点击'OA表单'菜单")
-                        
-                        # 等待子菜单展开
-                        print("  等待子菜单展开...")
-                        time.sleep(3)
-                        
-                        # 第二步: 在展开的子菜单中查找"工作汇报"
-                        print("\n第二步: 在'OA表单'子菜单中查找'工作汇报'...")
-                        
-                        # 查找"工作汇报"链接
-                        work_report_selectors = [
-                            'nav#pageleft_unfold a[href*="CooperativeWork"]',
-                            'nav#pageleft_unfold a:has-text("工作汇报")',
-                            'a[href*="CooperativeWork"]',
-                            'a[href="index.php?pageto_module=CooperativeWork&pageto_action=index"]',
-                            'a:has-text("工作汇报")',
-                        ]
-                        
-                        # 调试: 打印子菜单中的链接
-                        print("\n  调试: 查找子菜单中的链接...")
-                        try:
-                            submenu_links = self.page.locator('nav#pageleft_unfold a').all()
-                            print(f"  找到 {len(submenu_links)} 个链接:")
-                            for i, link in enumerate(submenu_links):
-                                try:
-                                    link_text = link.inner_text().strip() if link.inner_text() else ''
-                                    link_href = link.get_attribute('href') or ''
-                                    is_visible = link.is_visible()
-                                    if is_visible:
-                                        print(f"    [{i}] text='{link_text}', href='{link_href}', visible={is_visible}")
-                                except:
-                                    pass
-                        except Exception as e:
-                            print(f"    调试信息获取失败: {e}")
-                        
-                        work_report_link = None
-                        for selector in work_report_selectors:
-                            try:
-                                print(f"  尝试选择器: {selector}")
-                                locators = self.page.locator(selector).all()
-                                for loc in locators:
-                                    try:
-                                        if loc.is_visible():
-                                            # 验证文本内容
-                                            link_text = loc.inner_text().strip() if loc.inner_text() else ''
-                                            link_href = loc.get_attribute('href') or ''
-                                            if '工作汇报' in link_text or 'CooperativeWork' in link_href:
-                                                work_report_link = loc
-                                                print(f"  ✓ 找到'工作汇报'菜单: {selector}")
-                                                print(f"    链接文本: {link_text}")
-                                                print(f"    链接地址: {link_href}")
-                                                break
-                                    except Exception as e:
-                                        print(f"    检查元素时出错: {e}")
-                                        continue
-                                if work_report_link:
-                                    break
-                            except Exception as e:
-                                print(f"    选择器 {selector} 出错: {e}")
-                                continue
-                        
-                        if work_report_link:
-                            # 确保元素在视口中（滚动到可见）
-                            work_report_link.scroll_into_view_if_needed()
-                            time.sleep(0.5)
-                            
-                            # 点击"工作汇报"链接
-                            work_report_link.click()
-                            print("  ✓ 已点击'工作汇报'菜单")
-                            
-                            # 等待页面跳转
-                            print("  等待页面跳转...")
-                            time.sleep(5)
-                            
-                            # 等待新页面加载
-                            try:
-                                self.page.wait_for_load_state("networkidle", timeout=10000)
-                            except:
-                                pass
-                            
-                            current_url = self.page.url
-                            print(f"  ✓ 当前页面 URL: {current_url}")
-                            
-                            if 'CooperativeWork' in current_url:
-                                print("  ✓ 已成功跳转到工作汇报页面")
-                            else:
-                                print("  ⚠ 页面可能未完全跳转，请检查")
-                        else:
-                            print("  ✗ 未找到'工作汇报'子菜单项")
-                            print("  提示: 浏览器将保持打开 30 秒，请手动检查页面结构...")
-                            time.sleep(30)
-                            
-                    except Exception as e:
-                        print(f"  ✗ 点击菜单时出错: {str(e)}")
-                        import traceback
-                        traceback.print_exc()
+                # 构建工作汇报页面的完整URL
+                # 从当前URL提取基础路径（例如：https://crm.vankun.cn/crm/）
+                current_url = self.page.url
+                if current_url.endswith('/'):
+                    base_url = current_url
                 else:
-                    print("  ✗ 未找到'OA表单'菜单")
-                    print("  提示: 浏览器将保持打开 30 秒，请手动检查页面结构...")
+                    # 提取协议和域名部分
+                    from urllib.parse import urlparse, urljoin
+                    parsed = urlparse(current_url)
+                    base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+                    if not base_url.endswith('/'):
+                        base_url = base_url.rsplit('/', 1)[0] + '/'
+                
+                # 工作汇报页面的相对路径
+                work_report_path = "index.php?pageto_module=CooperativeWork&pageto_action=index"
+                work_report_url = urljoin(base_url, work_report_path)
+                
+                print(f"  工作汇报页面URL: {work_report_url}")
+                
+                # 直接访问工作汇报页面
+                try:
+                    self.page.goto(work_report_url, wait_until="networkidle")
+                    time.sleep(3)  # 等待页面稳定
+                    
+                    # 验证是否成功跳转到工作汇报页面
+                    final_url = self.page.url
+                    print(f"  ✓ 当前页面 URL: {final_url}")
+                    
+                    if 'CooperativeWork' in final_url:
+                        print("  ✓ 已成功跳转到工作汇报页面")
+                    else:
+                        print("  ⚠ 页面URL可能未完全匹配，但继续执行...")
+                    
+                except Exception as e:
+                    print(f"  ✗ 访问工作汇报页面时出错: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    print("  提示: 浏览器将保持打开 30 秒，请手动检查...")
                     time.sleep(30)
+                    return False
                 
                 return True
             else:
