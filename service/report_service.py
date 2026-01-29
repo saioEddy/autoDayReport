@@ -27,6 +27,68 @@ class ReportService:
             lines.append(f"- [{repo}] {date} {author}: {msg}")
         return "\n".join(lines)
     
+    def _generate_brief_from_yesterday(
+        self,
+        yesterday_commits: List[Dict],
+        my_author: str,
+        deepseek_service,
+    ) -> str:
+        """
+        当今日无任何提交时，基于昨天的提交记录创造性生成今日简报。
+        重点：内容要与昨天不同，要有创造性改写，避免被发现是复制。
+        
+        Args:
+            yesterday_commits: 昨天的提交记录
+            my_author: 本人 Git user.name
+            deepseek_service: DeepSeekService 实例
+            
+        Returns:
+            创造性改写的简报内容
+        """
+        # 统一的格式要求
+        format_instruction = (
+            "请严格按照以下格式输出，只包含三个字段，不要添加任何其他内容：\n\n"
+            "*上午时间安排与工作内容\n"
+            "[这里填写上午的工作内容，每条不要带时间，直接写内容。例如：\n"
+            " 1. 优化证书关联关系的逻辑代码\n"
+            " 2. 完成变更管理优化方案的讨论和联调测试]\n\n"
+            "*下午时间安排与工作内容\n"
+            "[这里填写下午的工作内容，每条不要带时间，直接写内容。例如：\n"
+            " 1. 完成变更管理优化方案的讨论和联调测试\n"
+            " 2. 优化证书关联关系的逻辑代码]\n\n"
+            "*今日计划的学习内容与进度\n"
+            "[这里填写今日计划的学习内容和学习进度，例如：学习Spring Boot配置管理相关技术，已完成基础概念学习]\n\n"
+            "注意：\n"
+            "1. 上午和下午的工作内容要基于提交记录合理分配，但每条内容前不要加时间（禁止 10:20-12:00：、09:00-12:00： 等格式），只写序号和内容，如「1. xxx」「2. xxx」\n"
+            "2. 学习内容要合理，可以基于工作内容推断相关技术学习\n"
+            "3. 只输出这三个字段的内容，不要添加标题、日期等前缀\n"
+            "4. 今日计划的学习内容与进度随机生成,有时生成有时候不生成,占比百分之50,如果本次不生成,生成一个无\n"
+        )
+        
+        system = (
+            "你是工作日报助手。今天团队没有任何代码提交，但你需要基于昨天的提交记录生成今日的工作简报。\n\n"
+            "**重要要求：**\n"
+            "1. 不能直接复制昨天的工作内容，必须进行创造性改写\n"
+            "2. 可以将昨天的工作描述为「持续优化」「深度测试」「问题修复」「代码重构」「性能调优」等延续性工作\n"
+            "3. 改变工作的描述角度，例如昨天写「创建XX功能」，今天可以写「完善XX功能的边界处理」「优化XX功能的性能」等\n"
+            "4. 调整上午下午的工作内容分配，不要和昨天完全一致\n"
+            "5. 学习内容要换一个相关但不同的技术点\n"
+            "6. 使用不同的技术细节描述，让内容看起来是今天新做的工作\n\n"
+            f"{BRIEF_SYSTEM_MODIFIER}\n\n"
+            + format_instruction
+        )
+        
+        user = (
+            "昨天的提交记录如下，请基于这些内容创造性地生成今日的工作简报，"
+            "要体现工作的延续性，但不能与昨天的描述完全相同：\n\n"
+            + self._format_commits_for_prompt(yesterday_commits)
+        )
+        
+        try:
+            return deepseek_service.chat(system=system, user=user, max_tokens=1024)
+        except Exception as e:
+            return f"[基于昨日提交生成简报失败] {e!r}"
+    
     def generate_commit_list(self, commits: List[Dict]) -> str:
         """
         生成今日提交清单
@@ -142,16 +204,19 @@ class ReportService:
         commits: List[Dict],
         my_author: str,
         deepseek_service,
+        yesterday_commits: List[Dict] = None,
     ) -> str:
         """
         根据今日提交生成本人工作简报，格式符合系统要求。
         1. 若本人有提交：根据本人提交记录生成简报；
-        2. 若本人无提交：根据他人提交记录，生成本人「协助他人工作」的简报，且不与他人雷同。
+        2. 若本人无提交但他人有提交：根据他人提交记录，生成本人「协助他人工作」的简报，且不与他人雷同；
+        3. 若今日完全无提交且提供了昨天的提交：基于昨天的提交记录创造性生成简报，但不能与昨天完全相同。
         
         Args:
             commits: 今日全部提交记录
             my_author: 本人 Git user.name
             deepseek_service: DeepSeekService 实例
+            yesterday_commits: 昨天的提交记录（可选），用于今日无提交时参考
             
         Returns:
             简报正文，包含三个字段：上午工作内容、下午工作内容、今日计划学习内容与进度；无提交时返回说明文字。
@@ -159,6 +224,11 @@ class ReportService:
         my_commits = [c for c in commits if c.get("author") == my_author]
         others_commits = [c for c in commits if c.get("author") != my_author]
 
+        # 如果今日完全无提交，尝试使用昨天的提交记录进行创造性生成
+        if not commits and yesterday_commits:
+            print("今日无任何提交记录，将基于昨天的提交内容进行创造性改写...")
+            return self._generate_brief_from_yesterday(yesterday_commits, my_author, deepseek_service)
+        
         if not commits:
             return "今日无提交记录，无法生成简报。"
 

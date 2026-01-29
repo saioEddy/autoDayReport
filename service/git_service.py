@@ -68,12 +68,13 @@ class GitService:
         self.git_repos = git_repos
         return git_repos
     
-    def get_today_commits(self, repo_path: str) -> List[Dict]:
+    def get_commits_by_date(self, repo_path: str, target_date: datetime = None) -> List[Dict]:
         """
-        获取指定仓库今日的所有提交记录
+        获取指定仓库指定日期的所有提交记录
         
         Args:
             repo_path: Git仓库路径
+            target_date: 目标日期，默认为今天
             
         Returns:
             提交记录列表，每个记录包含：author, date, message, hash
@@ -81,10 +82,14 @@ class GitService:
         if not os.path.exists(os.path.join(repo_path, '.git')):
             return []
         
-        # 获取今日的开始和结束时间
-        today = datetime.now().date()
-        start_time = datetime.combine(today, datetime.min.time())
-        end_time = datetime.combine(today, datetime.max.time())
+        # 如果未指定日期，使用今天
+        if target_date is None:
+            target_date = datetime.now()
+        
+        # 获取目标日期的开始和结束时间
+        target_day = target_date.date()
+        start_time = datetime.combine(target_day, datetime.min.time())
+        end_time = datetime.combine(target_day, datetime.max.time())
         
         # 格式化时间用于git log查询
         start_str = start_time.strftime('%Y-%m-%d 00:00:00')
@@ -98,7 +103,7 @@ class GitService:
             repo_path_abs = os.path.abspath(repo_path)
             os.chdir(repo_path_abs)
             
-            # 执行git log命令，获取今日所有提交
+            # 执行git log命令，获取指定日期所有提交
             # 使用--all获取所有分支的提交
             # 跨平台检测git命令位置
             git_cmd = shutil.which('git') or 'git'  # 优先使用which找到的git路径，找不到则使用'git'
@@ -145,6 +150,43 @@ class GitService:
         
         return commits
     
+    def get_today_commits(self, repo_path: str) -> List[Dict]:
+        """
+        获取指定仓库今日的所有提交记录
+        
+        Args:
+            repo_path: Git仓库路径
+            
+        Returns:
+            提交记录列表，每个记录包含：author, date, message, hash
+        """
+        return self.get_commits_by_date(repo_path, datetime.now())
+    
+    def get_all_commits_by_date(self, repo_paths: List[str] = None, target_date: datetime = None) -> List[Dict]:
+        """
+        获取所有指定仓库指定日期的提交记录
+        
+        Args:
+            repo_paths: Git仓库路径列表，如果为None则使用discover_git_repos的结果
+            target_date: 目标日期，默认为今天
+            
+        Returns:
+            所有仓库指定日期的提交记录列表
+        """
+        if repo_paths is None:
+            repo_paths = self.git_repos if self.git_repos else self.discover_git_repos()
+        
+        all_commits = []
+        
+        for repo_path in repo_paths:
+            commits = self.get_commits_by_date(repo_path, target_date)
+            all_commits.extend(commits)
+        
+        # 按时间排序
+        all_commits.sort(key=lambda x: x.get('date', ''), reverse=True)
+        
+        return all_commits
+    
     def get_all_today_commits(self, repo_paths: List[str] = None) -> List[Dict]:
         """
         获取所有指定仓库今日的提交记录
@@ -155,19 +197,20 @@ class GitService:
         Returns:
             所有仓库今日的提交记录列表
         """
-        if repo_paths is None:
-            repo_paths = self.git_repos if self.git_repos else self.discover_git_repos()
+        return self.get_all_commits_by_date(repo_paths, datetime.now())
+    
+    def get_all_yesterday_commits(self, repo_paths: List[str] = None) -> List[Dict]:
+        """
+        获取所有指定仓库昨天的提交记录
         
-        all_commits = []
-        
-        for repo_path in repo_paths:
-            commits = self.get_today_commits(repo_path)
-            all_commits.extend(commits)
-        
-        # 按时间排序
-        all_commits.sort(key=lambda x: x.get('date', ''), reverse=True)
-        
-        return all_commits
+        Args:
+            repo_paths: Git仓库路径列表，如果为None则使用discover_git_repos的结果
+            
+        Returns:
+            所有仓库昨天的提交记录列表
+        """
+        yesterday = datetime.now() - timedelta(days=1)
+        return self.get_all_commits_by_date(repo_paths, yesterday)
     
     def get_current_author(self, repo_path: str = None) -> str:
         """

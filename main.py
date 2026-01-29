@@ -74,6 +74,13 @@ def main():
     today_commits = git_service.get_all_today_commits(git_repos)
     print(f"今日共有 {len(today_commits)} 条提交记录")
     
+    # 2.5 如果今日无提交，获取昨天的提交记录作为备用
+    yesterday_commits = []
+    if not today_commits:
+        print("今日无提交记录，正在获取昨天的提交记录作为参考...")
+        yesterday_commits = git_service.get_all_yesterday_commits(git_repos)
+        print(f"昨天共有 {len(yesterday_commits)} 条提交记录")
+    
     # 3. 生成日报内容
     print("正在生成日报内容...")
     report_content = report_service.generate_daily_report(today_commits)
@@ -95,7 +102,12 @@ def main():
     if not my_author:
         print("警告: 未获取到 Git user.name，将无法区分本人/他人提交；简报按「无本人提交」处理。")
     deepseek_service = DeepSeekService()
-    brief = report_service.generate_brief(today_commits, my_author or "", deepseek_service)
+    brief = report_service.generate_brief(
+        today_commits, 
+        my_author or "", 
+        deepseek_service,
+        yesterday_commits=yesterday_commits if yesterday_commits else None
+    )
     brief_path = report_service.save_brief_to_file(brief)
     print(f"简报已保存到: {brief_path}")
     print("\n" + "-" * 60)
