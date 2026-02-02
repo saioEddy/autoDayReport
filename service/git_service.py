@@ -108,12 +108,15 @@ class GitService:
             # 跨平台检测git命令位置
             git_cmd = shutil.which('git') or 'git'  # 优先使用which找到的git路径，找不到则使用'git'
             
+            # 旧的格式(只有标题): '--pretty=format:%H|%an|%ad|%s',
+            # 新的格式(标题+完整提交体): 使用 %s 获取标题, %b 获取提交体
+            # 使用特殊分隔符 ||BODY|| 来区分标题和提交体
             cmd = [git_cmd, 'log']
             cmd.extend([
                 '--all',
                 '--since', start_str,
                 '--until', end_str,
-                '--pretty=format:%H|%an|%ad|%s',
+                '--pretty=format:%H|%an|%ad|%s||BODY||%b||END||',
                 '--date=format:%Y-%m-%d %H:%M:%S'
             ])
             
@@ -128,16 +131,47 @@ class GitService:
                 errors='replace'  # 编码错误时替换而不是抛出异常
             )
             
+            # 旧的解析逻辑(只有标题):
+            # if result.returncode == 0 and result.stdout.strip():
+            #     for line in result.stdout.strip().split('\n'):
+            #         if '|' in line:
+            #             parts = line.split('|', 3)
+            #             if len(parts) >= 4:
+            #                 commits.append({
+            #                     'hash': parts[0][:7],  # 短hash
+            #                     'author': parts[1],
+            #                     'date': parts[2],
+            #                     'message': parts[3],
+            #                     'repo': os.path.basename(repo_path)
+            #                 })
+            
+            # 新的解析逻辑(标题+提交体):
             if result.returncode == 0 and result.stdout.strip():
-                for line in result.stdout.strip().split('\n'):
-                    if '|' in line:
-                        parts = line.split('|', 3)
+                # 按 ||END|| 分隔每个提交
+                commit_blocks = result.stdout.strip().split('||END||')
+                for block in commit_blocks:
+                    block = block.strip()
+                    if not block or '||BODY||' not in block:
+                        continue
+                    
+                    # 分离基本信息和提交体
+                    if '||BODY||' in block:
+                        basic_info, body = block.split('||BODY||', 1)
+                        body = body.strip()
+                    else:
+                        basic_info = block
+                        body = ''
+                    
+                    # 解析基本信息: hash|author|date|subject
+                    if '|' in basic_info:
+                        parts = basic_info.split('|', 3)
                         if len(parts) >= 4:
                             commits.append({
                                 'hash': parts[0][:7],  # 短hash
                                 'author': parts[1],
                                 'date': parts[2],
-                                'message': parts[3],
+                                'message': parts[3],  # 提交标题
+                                'body': body,  # 提交体(完整描述)
                                 'repo': os.path.basename(repo_path)
                             })
             

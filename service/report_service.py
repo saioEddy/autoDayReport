@@ -18,13 +18,33 @@ class ReportService:
         """将提交列表格式化为给 AI 的文本"""
         if not commits:
             return "（无）"
+        # 旧的格式化方式(只有标题):
+        # lines = []
+        # for c in commits:
+        #     repo = c.get("repo", "")
+        #     date = c.get("date", "")
+        #     author = c.get("author", "")
+        #     msg = c.get("message", "")
+        #     lines.append(f"- [{repo}] {date} {author}: {msg}")
+        # return "\n".join(lines)
+        
+        # 新的格式化方式(标题+完整提交体):
         lines = []
         for c in commits:
             repo = c.get("repo", "")
             date = c.get("date", "")
             author = c.get("author", "")
             msg = c.get("message", "")
+            body = c.get("body", "")
+            
+            # 先添加标题行
             lines.append(f"- [{repo}] {date} {author}: {msg}")
+            # 如果有提交体,缩进显示
+            if body:
+                body_lines = body.split('\n')
+                for body_line in body_lines:
+                    if body_line.strip():
+                        lines.append(f"  {body_line}")
         return "\n".join(lines)
     
     def _generate_brief_from_yesterday(
@@ -62,7 +82,7 @@ class ReportService:
             "1. 上午和下午的工作内容要基于提交记录合理分配，但每条内容前不要加时间（禁止 10:20-12:00：、09:00-12:00： 等格式），只写序号和内容，如「1. xxx」「2. xxx」\n"
             "2. 学习内容要合理，可以基于工作内容推断相关技术学习\n"
             "3. 只输出这三个字段的内容，不要添加标题、日期等前缀\n"
-            "4. 今日计划的学习内容与进度随机生成,有时生成有时候不生成,占比百分之50,如果本次不生成,生成一个无\n"
+            "4. 今日计划的学习内容与进度随机生成,有时生成有时候不生成,占比百分之30生成,百分之70不生成,如果本次不生成,生成一个无\n"
         )
         
         system = (
@@ -131,8 +151,21 @@ class ReportService:
                 for commit in repo_commits:
                     hash_val = commit.get('hash', '')
                     message = commit.get('message', '')
+                    body = commit.get('body', '')
                     time = commit.get('date', '')
+                    
+                    # 旧的显示方式(只有标题):
+                    # report_lines.append(f"    [{hash_val}] {time} - {message}")
+                    
+                    # 新的显示方式(标题+完整提交体):
                     report_lines.append(f"    [{hash_val}] {time} - {message}")
+                    # 如果有提交体,缩进显示
+                    if body:
+                        # 将提交体按行分割,每行前面加上缩进
+                        body_lines = body.split('\n')
+                        for body_line in body_lines:
+                            if body_line.strip():  # 跳过空行
+                                report_lines.append(f"      {body_line}")
                 report_lines.append("")
             
             report_lines.append("")
@@ -249,7 +282,7 @@ class ReportService:
             "1. 上午和下午的工作内容要基于提交记录合理分配，但每条内容前不要加时间（禁止 10:20-12:00：、09:00-12:00： 等格式），只写序号和内容，如「1. xxx」「2. xxx」\n"
             "2. 学习内容要合理，可以基于工作内容推断相关技术学习\n"
             "3. 只输出这三个字段的内容，不要添加标题、日期等前缀\n"
-            "4. 今日计划的学习内容与进度随机生成,有时生成有时候不生成,占比百分之50,如果本次不生成,生成一个无\n"
+            "4. 今日计划的学习内容与进度随机生成,有时生成有时候不生成,占比百分之30生成,百分之70不生成,如果本次不生成,生成一个无\n"
         )
 
         if my_commits:
