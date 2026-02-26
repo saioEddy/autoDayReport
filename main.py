@@ -22,6 +22,9 @@ from config import (
 
 def main():
     """主函数"""
+    # 检测命令行参数：python main.py auto 则跳过确认直接发布
+    auto_publish = 'auto' in [arg.lower() for arg in sys.argv[1:]]
+
     print(f"开始生成日报 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("-" * 60)
     
@@ -153,10 +156,15 @@ def main():
     
     # 7. 自动发布到 CRM 系统（可选）
     print("\n" + "=" * 60)
-    print("是否要自动发布到 CRM 系统? (y/n): ", end="")
-    choice = input().strip().lower()
-    
-    if choice == 'y':
+    if auto_publish:
+        print("检测到 auto 参数，直接发布到 CRM 系统...")
+        do_publish = True
+    else:
+        print("是否要自动发布到 CRM 系统? (y/n): ", end="")
+        choice = input().strip().lower()
+        do_publish = choice == 'y'
+
+    if do_publish:
         print("\n正在登录 CRM 系统...")
         crm_service = CRMService(CRM_URL, CRM_USERNAME, CRM_PASSWORD)
         
