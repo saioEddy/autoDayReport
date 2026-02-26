@@ -1,13 +1,20 @@
 """
 Git服务层 - 处理Git仓库相关的业务逻辑（跨平台兼容）
+支持两种模式：
+  local  - 扫描本地已 clone 的仓库
+  remote - 通过 GitLab REST API v4 直接拉取服务器提交，无需本地 clone
 """
 import os
 import sys
 import subprocess
 import shutil
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import List, Dict, Optional
 from pathlib import Path
+from urllib.request import urlopen, Request
+from urllib.parse import urlencode, quote
+from urllib.error import HTTPError, URLError
+import json
 
 from config import EXCLUDE_DIRS
 
@@ -292,4 +299,171 @@ class GitService:
                     return r2.stdout.strip()
         except Exception as e:
             print(f"警告: 获取 Git user.name 失败: {e}")
+        return ''
+
+    # ------------------------------------------------------------------ #
+    #  GitLab Remote API 模式（无需本地 clone）                             #
+    # ------------------------------------------------------------------ #
+
+    def _gitlab_request(self, gitlab_url: str, token: str, path: str, params: dict = None) -> Optional[dict]:
+        """
+        发起一次 GitLab API GET 请求，返回解析后的 JSON 数据。
+        失败时返回 None。
+        """
+        url = f"{gitlab_url.rstrip('/')}/api/v4{path}"
+        if params:
+            url += '?' + urlencode(params)
+        req = Request(url, headers={'PRIVATE-TOKEN': token})
+        try:
+            with urlopen(req, timeout=15) as resp:
+                return json.loads(resp.read().decode('utf-8'))
+        except HTTPError as e:
+            print(f"GitLab API 请求失败 [{e.code}]: {url}")
+        except URLError as e:
+            print(f"GitLab API 连接失败: {e.reason}")
+        except Exception as e:
+            print(f"GitLab API 异常: {e}")
+        return None
+
+    def _gitlab_paged_request(self, gitlab_url: str, token: str, path: str, params: dict = None) -> List[dict]:
+        """
+        自动翻页，返回所有页合并的列表。
+        """
+        all_items = []
+        page = 1
+        base_params = dict(params or {})
+        base_params['per_page'] = 100
+        while True:
+            base_params['page'] = page
+            items = self._gitlab_request(gitlab_url, token, path, base_params)
+            if not items:
+                break
+            all_items.extend(items)
+            if len(items) < 100:
+                break
+            page += 1
+        return all_items
+
+    def _get_active_project_ids(self, gitlab_url: str, token: str, day) -> set:
+        """
+        用两路并行策略确定「当天有提交活动」的项目 ID 集合，避免遍历全部项目：
+
+        路由 A：/events?action=pushed  → 自己今天 push 过的项目
+        路由 B：/projects?last_activity_after=今天  → 今天有任意活动的成员项目
+
+        两者取并集，通常只有个位数项目，远小于全量 109 个。
+        """
+        from datetime import timedelta
+        after  = (day - timedelta(days=1)).strftime('%Y-%m-%d')
+        before = (day + timedelta(days=1)).strftime('%Y-%m-%d')
+
+        # 路由 A：自己的 push events
+        my_events = self._gitlab_paged_request(gitlab_url, token, '/events', {
+            'action': 'pushed',
+            'after':  after,
+            'before': before,
+        })
+        event_ids = {e['project_id'] for e in my_events}
+
+        # 路由 B：last_activity_after 过滤的成员项目
+        recent = self._gitlab_paged_request(gitlab_url, token, '/projects', {
+            'membership': 'true',
+            'simple': 'true',
+            'order_by': 'last_activity_at',
+            'sort': 'desc',
+            'last_activity_after': f"{day}T00:00:00Z",
+            'per_page': 50,
+        })
+        recent_ids = {p['id'] for p in recent}
+
+        return event_ids | recent_ids
+
+    def get_gitlab_today_commits(
+        self,
+        gitlab_url: str,
+        token: str,
+        target_date: datetime = None,
+        author_username: str = None,
+    ) -> List[Dict]:
+        """
+        通过 GitLab API 获取指定日期内所有可见项目上的提交。
+
+        优化策略：先用 /events + /projects?last_activity_after 定位
+        今天有活动的项目（通常只有个位数），再只查这些项目的 commits，
+        避免遍历全部 100+ 个项目。
+
+        Args:
+            gitlab_url:      GitLab 服务器地址，如 http://10.57.254.12:9999
+            token:           Personal Access Token（需要 read_api 或 api 权限）
+            target_date:     目标日期，默认今天
+            author_username: 只筛选该用户名的提交；None 则返回所有用户
+
+        Returns:
+            提交记录列表，字段与本地模式保持一致：
+            hash, author, date, message, body, repo
+        """
+        if target_date is None:
+            target_date = datetime.now()
+
+        day   = target_date.date()
+        since = f"{day}T00:00:00+08:00"
+        until = f"{day}T23:59:59+08:00"
+
+        # 1. 获取当前登录用户信息
+        me = self._gitlab_request(gitlab_url, token, '/user')
+        if not me:
+            print("警告: 无法获取 GitLab 当前用户信息，请检查 Token 是否有效")
+            return []
+        me_name     = me.get('name', '')
+        me_username = me.get('username', '')
+        print(f"GitLab 当前用户: {me_name} (@{me_username})")
+
+        # 2. 定位今天有活动的项目（两路策略，通常只有个位数）
+        project_ids = self._get_active_project_ids(gitlab_url, token, day)
+        print(f"今天有活动的项目数: {len(project_ids)}，正在获取提交...")
+
+        all_commits: List[Dict] = []
+
+        # 3. 只查活跃项目的提交
+        for proj_id in project_ids:
+            proj = self._gitlab_request(gitlab_url, token, f'/projects/{proj_id}')
+            proj_name = proj.get('name', str(proj_id)) if proj else str(proj_id)
+            proj_path = proj.get('path_with_namespace', proj_name) if proj else proj_name
+
+            params: dict = {'since': since, 'until': until, 'all': 'true'}
+            commits_raw = self._gitlab_paged_request(
+                gitlab_url, token,
+                f'/projects/{proj_id}/repository/commits',
+                params,
+            )
+
+            for c in commits_raw:
+                committed_dt = c.get('committed_date', '') or c.get('created_at', '')
+                try:
+                    dt = datetime.fromisoformat(committed_dt.replace('Z', '+00:00'))
+                    date_str = dt.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    date_str = committed_dt
+
+                all_commits.append({
+                    'hash':      (c.get('id') or '')[:7],
+                    'author':    c.get('author_name', ''),
+                    'date':      date_str,
+                    'message':   c.get('title', ''),
+                    'body':      c.get('message', '').replace(c.get('title', ''), '', 1).strip(),
+                    'repo':      proj_name,
+                    'repo_path': proj_path,
+                })
+
+        # 4. 按时间倒序
+        all_commits.sort(key=lambda x: x.get('date', ''), reverse=True)
+        return all_commits
+
+    def get_gitlab_current_author(self, gitlab_url: str, token: str) -> str:
+        """
+        通过 GitLab API 获取当前登录用户的 name（用于简报区分本人/他人）。
+        """
+        me = self._gitlab_request(gitlab_url, token, '/user')
+        if me:
+            return me.get('name', '')
         return ''

@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from typing import List, Dict, Optional
 from collections import defaultdict
-from config import BRIEF_SYSTEM_MODIFIER, REPORT_SAVE_DIR, REPORT_FILE_FORMAT, BRIEF_FILE_FORMAT
+from config import BRIEF_SYSTEM_MODIFIER, REPORT_SAVE_DIR, REPORT_FILE_FORMAT, BRIEF_FILE_FORMAT, MY_GIT_AUTHORS
 
 
 class ReportService:
@@ -254,8 +254,12 @@ class ReportService:
         Returns:
             简报正文，包含三个字段：上午工作内容、下午工作内容、今日计划学习内容与进度；无提交时返回说明文字。
         """
-        my_commits = [c for c in commits if c.get("author") == my_author]
-        others_commits = [c for c in commits if c.get("author") != my_author]
+        # 合并 my_author（运行时获取）与 config 中配置的多账号列表，统一判断"本人"
+        my_authors = set(MY_GIT_AUTHORS)
+        if my_author:
+            my_authors.add(my_author)
+        my_commits     = [c for c in commits if c.get("author") in my_authors]
+        others_commits = [c for c in commits if c.get("author") not in my_authors]
 
         # 如果今日完全无提交，尝试使用昨天的提交记录进行创造性生成
         if not commits and yesterday_commits:

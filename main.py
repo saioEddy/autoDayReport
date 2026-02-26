@@ -14,6 +14,9 @@ from config import (
     CRM_PASSWORD,
     GIT_REPO_SEARCH_PATH,
     GIT_SEARCH_PATHS,
+    COMMIT_SOURCE,
+    GITLAB_URL,
+    GITLAB_TOKEN,
 )
 
 
@@ -25,61 +28,89 @@ def main():
     # 初始化服务
     git_service = GitService()
     report_service = ReportService()
-    
-    # 1. 自动发现Git仓库
-    print("正在搜索本地Git仓库...")
-    # 优先使用环境变量 GIT_REPO_SEARCH_PATH；否则使用 config.GIT_SEARCH_PATHS
-    if "GIT_REPO_SEARCH_PATH" in os.environ:
-        search_paths = [os.environ["GIT_REPO_SEARCH_PATH"]]
-    else:
-        possible_paths = list(GIT_SEARCH_PATHS)
-        if sys.platform == "win32":
-            win_docs = os.path.join(os.path.expanduser("~"), "Documents")
-            if os.path.exists(win_docs):
-                possible_paths.insert(0, win_docs)
-            win_projects = os.path.join(os.path.expanduser("~"), "Documents", "Projects")
-            if os.path.exists(win_projects):
-                possible_paths.insert(0, win_projects)
-        search_paths = []
-        for path in possible_paths:
-            expanded = os.path.abspath(os.path.expanduser(path))
-            if os.path.exists(expanded) and os.path.isdir(expanded):
-                search_paths.append(expanded)
-    if not search_paths:
-        search_paths = [os.path.abspath(os.path.expanduser(GIT_REPO_SEARCH_PATH))]
-    
-    # 显示所有搜索路径
-    print(f"搜索路径 ({len(search_paths)} 个):")
-    for path in search_paths:
-        print(f"  - {path}")
-    
-    # 在所有路径中搜索Git仓库
-    all_git_repos = []
-    for search_path in search_paths:
-        repos = git_service.discover_git_repos(search_path)
-        all_git_repos.extend(repos)
-        if repos:
-            print(f"  在 {search_path} 中发现 {len(repos)} 个Git仓库")
-    
-    # 去重（避免同一个仓库被重复添加）
-    git_repos = list(dict.fromkeys(all_git_repos))  # 保持顺序的去重方法
-    print(f"\n总共发现 {len(git_repos)} 个Git仓库")
-    
-    if not git_repos:
-        print("警告: 未发现任何Git仓库")
-        return
-    
-    # 2. 获取今日所有提交记录
-    print("正在获取今日提交记录...")
-    today_commits = git_service.get_all_today_commits(git_repos)
-    print(f"今日共有 {len(today_commits)} 条提交记录")
-    
-    # 2.5 如果今日无提交，获取昨天的提交记录作为备用
+
+    today_commits = []
     yesterday_commits = []
-    if not today_commits:
-        print("今日无提交记录，正在获取昨天的提交记录作为参考...")
-        yesterday_commits = git_service.get_all_yesterday_commits(git_repos)
-        print(f"昨天共有 {len(yesterday_commits)} 条提交记录")
+    my_author = ''
+    git_repos = []
+
+    if COMMIT_SOURCE == 'remote':
+        # ── 远程模式：通过 GitLab API 获取，无需本地 clone ──────────────────
+        print(f"[远程模式] GitLab: {GITLAB_URL}")
+        if not GITLAB_TOKEN:
+            print("错误: GITLAB_TOKEN 未配置，请在 config.py 或环境变量中填写 Personal Access Token")
+            print("生成地址: http://10.57.254.12:9999/-/profile/personal_access_tokens")
+            return
+
+        # 获取今日提交
+        print("正在通过 GitLab API 获取今日提交记录...")
+        today_commits = git_service.get_gitlab_today_commits(GITLAB_URL, GITLAB_TOKEN)
+        print(f"今日共有 {len(today_commits)} 条提交记录")
+
+        # 今日无提交则取昨日
+        if not today_commits:
+            from datetime import timedelta
+            print("今日无提交记录，正在获取昨天的提交记录作为参考...")
+            yesterday = datetime.now() - timedelta(days=1)
+            yesterday_commits = git_service.get_gitlab_today_commits(GITLAB_URL, GITLAB_TOKEN, target_date=yesterday)
+            print(f"昨天共有 {len(yesterday_commits)} 条提交记录")
+
+        # 获取当前用户名（用于简报区分本人/他人）
+        my_author = git_service.get_gitlab_current_author(GITLAB_URL, GITLAB_TOKEN)
+
+    else:
+        # ── 本地模式：扫描本地已 clone 的仓库 ────────────────────────────────
+        print("[本地模式] 正在搜索本地Git仓库...")
+        # 优先使用环境变量 GIT_REPO_SEARCH_PATH；否则使用 config.GIT_SEARCH_PATHS
+        if "GIT_REPO_SEARCH_PATH" in os.environ:
+            search_paths = [os.environ["GIT_REPO_SEARCH_PATH"]]
+        else:
+            possible_paths = list(GIT_SEARCH_PATHS)
+            if sys.platform == "win32":
+                win_docs = os.path.join(os.path.expanduser("~"), "Documents")
+                if os.path.exists(win_docs):
+                    possible_paths.insert(0, win_docs)
+                win_projects = os.path.join(os.path.expanduser("~"), "Documents", "Projects")
+                if os.path.exists(win_projects):
+                    possible_paths.insert(0, win_projects)
+            search_paths = []
+            for path in possible_paths:
+                expanded = os.path.abspath(os.path.expanduser(path))
+                if os.path.exists(expanded) and os.path.isdir(expanded):
+                    search_paths.append(expanded)
+        if not search_paths:
+            search_paths = [os.path.abspath(os.path.expanduser(GIT_REPO_SEARCH_PATH))]
+
+        # 显示所有搜索路径
+        print(f"搜索路径 ({len(search_paths)} 个):")
+        for path in search_paths:
+            print(f"  - {path}")
+
+        # 在所有路径中搜索Git仓库
+        all_git_repos = []
+        for search_path in search_paths:
+            repos = git_service.discover_git_repos(search_path)
+            all_git_repos.extend(repos)
+            if repos:
+                print(f"  在 {search_path} 中发现 {len(repos)} 个Git仓库")
+
+        git_repos = list(dict.fromkeys(all_git_repos))
+        print(f"\n总共发现 {len(git_repos)} 个Git仓库")
+
+        if not git_repos:
+            print("警告: 未发现任何Git仓库")
+            return
+
+        # 获取今日所有提交记录
+        print("正在获取今日提交记录...")
+        today_commits = git_service.get_all_today_commits(git_repos)
+        print(f"今日共有 {len(today_commits)} 条提交记录")
+
+        # 今日无提交则取昨日
+        if not today_commits:
+            print("今日无提交记录，正在获取昨天的提交记录作为参考...")
+            yesterday_commits = git_service.get_all_yesterday_commits(git_repos)
+            print(f"昨天共有 {len(yesterday_commits)} 条提交记录")
     
     # 3. 生成日报内容
     print("正在生成日报内容...")
@@ -98,7 +129,9 @@ def main():
     
     # 6. 生成本人简报（DeepSeek 润色）
     print("\n正在生成本人简报（DeepSeek）...")
-    my_author = git_service.get_current_author(git_repos[0] if git_repos else None)
+    # 远程模式已在上方赋值 my_author；本地模式在此获取
+    if not my_author:
+        my_author = git_service.get_current_author(git_repos[0] if git_repos else None)
     if not my_author:
         print("警告: 未获取到 Git user.name，将无法区分本人/他人提交；简报按「无本人提交」处理。")
     deepseek_service = DeepSeekService()

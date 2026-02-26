@@ -9,19 +9,26 @@ GIT_REPO_SEARCH_PATH = os.environ.get('GIT_REPO_SEARCH_PATH', os.path.expanduser
 
 # 默认 Git 仓库搜索路径列表（无环境变量时使用，main 会过滤存在的目录）
 GIT_SEARCH_PATHS = [
-    os.path.expanduser("~/Desktop/vankun/code"),
+    os.path.expanduser("E:/JOB/"),
     # os.path.expanduser("~/Documents/开发代码"),
 ]
 
-# 日报保存路径（项目根目录下的 reports）
-REPORT_SAVE_DIR = os.path.join(os.path.dirname(__file__), 'reports')
 
-# Git 搜索时需排除的目录（提高效率，git_service 使用）
-EXCLUDE_DIRS = ['.git', 'node_modules', '.venv', 'venv', '__pycache__', '.idea', '.vscode', '.cursor']
+# GitLab 远程 API 配置（可替代本地仓库扫描，直接从服务器拉取当日提交）
+# Personal Access Token 生成地址: http://10.57.254.12:9999/-/profile/personal_access_tokens
+# 需要的权限: read_api 或 api
+GITLAB_URL = os.environ.get('GITLAB_URL', 'http://10.57.254.12:9999')
+GITLAB_TOKEN = os.environ.get('GITLAB_TOKEN', 'kx3CetpyUtyVkoBy5JGk')  # 填入你的 Personal Access Token
+# 模式选择: 'local'=扫描本地仓库, 'remote'=GitLab API（不需要本地 clone）
+COMMIT_SOURCE = os.environ.get('COMMIT_SOURCE', 'remote')
 
-# 日报/简报文件格式（{date} 替换为 YYYYMMDD）
-REPORT_FILE_FORMAT = "日报_{date}.txt"
-BRIEF_FILE_FORMAT = "简报_{date}.txt"
+# 本人在 Git/GitLab 上使用的所有用户名/昵称（用于判断哪些提交属于本人）
+# GitLab name（如 杨世豪）、username（如 ysh）、本地 git user.name（如 saioEddy）都可以写进来
+MY_GIT_AUTHORS = [
+    '杨世豪',
+    'ysh',
+    'saioEddy',
+]
 
 # DeepSeek API（优先使用环境变量 DEEPSEEK_API_KEY，避免 key 进仓库）
 DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY', 'sk-91ee266d045e47c28ae1cfeb461ea9d7')
@@ -32,6 +39,17 @@ DEEPSEEK_MODEL = 'deepseek-chat'
 CRM_URL = "https://crm.vankun.cn/crm/"
 CRM_USERNAME = "eddy.yang"
 CRM_PASSWORD = "xxx"
+
+
+# 日报保存路径（项目根目录下的 reports）
+REPORT_SAVE_DIR = os.path.join(os.path.dirname(__file__), 'reports')
+
+# Git 搜索时需排除的目录（提高效率，git_service 使用）
+EXCLUDE_DIRS = ['.git', 'node_modules', '.venv', 'venv', '__pycache__', '.idea', '.vscode', '.cursor']
+
+# 日报/简报文件格式（{date} 替换为 YYYYMMDD）
+REPORT_FILE_FORMAT = "日报_{date}.txt"
+BRIEF_FILE_FORMAT = "简报_{date}.txt"
 
 # DeepSeek 简报生成修饰词配置
 # 工作描述风格：用于修饰生成的工作内容描述
