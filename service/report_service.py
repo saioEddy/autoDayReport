@@ -312,6 +312,54 @@ class ReportService:
         except Exception as e:
             return f"[简报生成失败] {e!r}"
 
+    def generate_brief_from_custom_content(
+        self,
+        custom_content: str,
+        deepseek_service,
+    ) -> str:
+        """
+        根据用户自定义输入的工作内容字符串，生成符合系统格式要求的工作简报。
+        适用于 python3 main.py auto --content="今天做了xxx" 场景。
+
+        Args:
+            custom_content: 用户自定义描述的今日工作内容
+            deepseek_service: DeepSeekService 实例
+
+        Returns:
+            格式化后的简报正文
+        """
+        format_instruction = (
+            "请严格按照以下格式输出，只包含三个字段，不要添加任何其他内容：\n\n"
+            "*上午时间安排与工作内容\n"
+            "[这里填写上午的工作内容，每条不要带时间，直接写内容。例如：\n"
+            " 1. 优化证书关联关系的逻辑代码\n"
+            " 2. 完成变更管理优化方案的讨论和联调测试]\n\n"
+            "*下午时间安排与工作内容\n"
+            "[这里填写下午的工作内容，每条不要带时间，直接写内容。例如：\n"
+            " 1. 完成变更管理优化方案的讨论和联调测试\n"
+            " 2. 优化证书关联关系的逻辑代码]\n\n"
+            "*今日计划的学习内容与进度\n"
+            "[这里填写今日计划的学习内容和学习进度，例如：学习Spring Boot配置管理相关技术，已完成基础概念学习]\n\n"
+            "注意：\n"
+            "1. 上午和下午的工作内容要基于用户描述合理分配，但每条内容前不要加时间（禁止 10:20-12:00：、09:00-12:00： 等格式），只写序号和内容，如「1. xxx」「2. xxx」\n"
+            "2. 学习内容要合理，可以基于工作内容推断相关技术学习\n"
+            "3. 只输出这三个字段的内容，不要添加标题、日期等前缀\n"
+            "4. 今日计划的学习内容与进度随机生成,有时生成有时候不生成,占比百分之30生成,百分之70不生成,如果本次不生成,生成一个无\n"
+        )
+
+        system = (
+            "你是工作日报助手。请根据用户描述的今日工作内容，生成符合系统格式要求的工作简报。\n\n"
+            f"{BRIEF_SYSTEM_MODIFIER}\n\n"
+            + format_instruction
+        )
+
+        user = f"我今天的工作内容如下，请据此生成工作简报：\n\n{custom_content}"
+
+        try:
+            return deepseek_service.chat(system=system, user=user, max_tokens=1024)
+        except Exception as e:
+            return f"[自定义内容简报生成失败] {e!r}"
+
     def save_brief_to_file(self, brief_content: str, file_path: Optional[str] = None) -> str:
         """
         保存简报到文件。

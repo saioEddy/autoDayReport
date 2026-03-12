@@ -7,12 +7,16 @@
 ## 功能特性
 
 1. **自动发现Git仓库**: 递归搜索指定目录下的所有Git仓库
-2. **获取今日提交**: 自动获取所有仓库中今日的所有提交记录
+2. **获取今日提交**: 自动获取所有仓库中今日的所有提交记录（含完整提交描述体）
 3. **生成提交清单**: 按作者和仓库分组，生成格式化的提交清单
 4. **保存日报**: 自动保存日报到文件
 5. **AI智能简报**: 使用DeepSeek AI自动润色生成工作简报（区分本人提交/协助他人）
 6. **CRM自动发布**: 支持自动登录CRM系统并发布日报（可选）
 7. **配置集中管理**: 所有配置项集中在 `config.py`，便于维护
+8. **远程GitLab模式**: 通过 GitLab API 拉取今日有提交活动的项目，无需本地 clone
+9. **昨日备用简报**: 全天无任何提交时，自动获取昨日记录并创造性改写为今日简报，避免内容雷同
+10. **自定义内容模式**: 支持直接输入工作描述字符串，跳过 Git 记录直接生成简报
+11. **免确认自动发布**: 支持 `auto` 参数跳过人工确认，直接发布到 CRM
 
 ## 项目结构
 
@@ -63,21 +67,59 @@ playwright install chromium
 
 ### 1. 运行程序
 
-**macOS/Linux:**
+**标准模式（交互式确认是否发布 CRM）：**
 ```bash
+# macOS/Linux
 python3 main.py
-```
 
-**Windows:**
-```cmd
+# Windows
 python main.py
 ```
 
-### 2. 配置说明
+**免确认自动发布模式（跳过 y/n 询问，直接发布）：**
+```bash
+python3 main.py auto
+```
+
+**自定义内容模式（输入工作描述，跳过 Git 记录直接生成简报）：**
+```bash
+# 写法一：等号连接
+python3 main.py --content=今天完成了登录模块的开发和联调测试
+
+# 写法二：空格分隔
+python3 main.py --content "今天完成了登录模块的开发和联调测试"
+
+# 组合 auto 参数：生成简报后直接发布到 CRM
+python3 main.py auto --content=今天完成了登录模块的开发和联调测试
+```
+
+### 2. 数据来源模式
+
+在 `config.py` 中通过 `COMMIT_SOURCE` 切换数据来源：
+
+```python
+# 远程模式：通过 GitLab API 获取，无需本地 clone（推荐）
+COMMIT_SOURCE = 'remote'
+
+# 本地模式：递归扫描本地已 clone 的仓库
+COMMIT_SOURCE = 'local'
+```
+
+**远程模式（remote）：**
+- 通过 GitLab REST API v4 拉取今日有提交活动的项目
+- 无需将所有仓库 clone 到本地，效率更高
+- 需要配置 `GITLAB_URL` 和 `GITLAB_TOKEN`
+- Token 生成地址：`http://<gitlab地址>/-/profile/personal_access_tokens`
+
+**本地模式（local）：**
+- 递归扫描 `GIT_SEARCH_PATHS` 中配置的本地目录
+- 适合仓库已全部 clone 到本地的场景
+
+### 3. 配置说明
 
 所有配置项都集中在 `config.py` 文件中，主要包括：
 
-#### Git仓库搜索路径配置
+#### Git仓库搜索路径配置（本地模式）
 
 程序会按以下优先级搜索Git仓库：
 1. 环境变量 `GIT_REPO_SEARCH_PATH` 指定的路径（单路径）
@@ -131,14 +173,35 @@ CRM_USERNAME = "your_username"
 CRM_PASSWORD = "your_password"
 ```
 
+#### GitLab 远程模式配置
+
+```python
+COMMIT_SOURCE = 'remote'
+GITLAB_URL = 'http://your-gitlab-server'
+GITLAB_TOKEN = 'your-personal-access-token'  # 建议改用环境变量
+```
+
+或使用环境变量：
+```bash
+export GITLAB_TOKEN=your_token_here
+```
+
+#### 本人作者标识配置
+
+程序通过 `MY_GIT_AUTHORS` 区分「本人提交」和「他人提交」，建议把所有使用过的 Git 用户名都填入：
+
+```python
+MY_GIT_AUTHORS = ['yourname', 'your.name', 'YourName']
+```
+
 #### 简报生成风格配置
 
-可在 `config.py` 中的 `BRIEF_STYLE_MODIFIERS` 调整AI生成简报的风格：
+可在 `config.py` 中的 `BRIEF_SYSTEM_MODIFIER` 调整AI生成简报的风格：
 - 工作描述风格（专业、简洁、详细等）
 - 语气修饰（积极、客观、正式等）
 - 用词偏好（技术术语、通俗易懂等）
 
-### 3. CRM自动发布（可选）
+### 4. CRM自动发布（可选）
 
 程序运行完成后会询问是否自动发布到CRM系统：
 
@@ -152,12 +215,17 @@ CRM_PASSWORD = "your_password"
 3. 将生成的简报内容自动填入表单
 4. 提交日报
 
+使用 `auto` 参数可跳过询问，直接发布：
+```bash
+python3 main.py auto
+```
+
 **注意：**
 - 首次使用需要安装Playwright浏览器驱动：`playwright install chromium`
 - 浏览器会以非无头模式运行（`headless=False`），方便查看和调试
 - 确保 `config.py` 中已正确配置CRM登录信息
 
-### 4. 定时任务（可选）
+### 5. 定时任务（可选）
 
 #### macOS/Linux (使用crontab)
 
@@ -165,8 +233,8 @@ CRM_PASSWORD = "your_password"
 # 编辑crontab
 crontab -e
 
-# 添加每日18:00执行的任务
-0 18 * * * cd /Users/sai0/Documents/开发代码/自动化日报提交 && /usr/bin/python3 main.py
+# 添加每日18:00自动生成并发布（无需人工确认）
+0 18 * * * cd /path/to/autoDayReport && /usr/bin/python3 main.py auto
 ```
 
 #### Windows (使用任务计划程序)
@@ -218,21 +286,24 @@ crontab -e
 简报会保存到 `reports/简报_YYYYMMDD.txt` 文件，由DeepSeek AI根据提交记录自动生成，格式符合系统要求：
 
 ```
-*上午时间安排与工作内容【时间:内容】
-09:00-12:00: 优化证书关联关系的逻辑代码，修复了登录模块的bug，提升了系统稳定性
+*上午时间安排与工作内容
+1. 优化证书关联关系的逻辑代码
+2. 修复登录模块的bug，提升系统稳定性
 
-*下午时间安排与工作内容【时间:内容】
-14:00-18:00: 完成变更管理优化方案的讨论和联调测试，添加了新的功能模块
+*下午时间安排与工作内容
+1. 完成变更管理优化方案的讨论和联调测试
+2. 添加新的功能模块并完成代码审查
 
 *今日计划的学习内容与进度
 学习Spring Boot配置管理相关技术，已完成基础概念学习，正在实践应用
 ```
 
 **智能特性：**
-- 有本人提交时：根据本人提交记录生成详细工作内容
-- 无本人提交时：根据他人提交记录，生成本人「协助他人工作」的简报，避免与同事日报雷同
-- 自动分配时间：合理分配上午/下午工作时间
-- 学习内容生成：基于工作内容推断相关技术学习（50%概率生成）
+- **本人有提交**：根据本人提交记录（含完整提交描述体）生成详细工作内容
+- **本人无提交，他人有提交**：根据他人提交记录，生成本人「协助、评审、联调」角色的简报，避免与同事日报雷同
+- **全天无提交**：自动获取昨日记录，创造性改写为今日简报（换角度描述，避免内容重复）
+- **自定义内容**：直接传入工作描述字符串，跳过 Git 记录生成简报
+- **学习内容随机**：30% 概率生成相关技术学习内容，70% 概率输出「无」，更真实自然
 
 ## 跨平台兼容性说明
 
@@ -272,6 +343,7 @@ crontab -e
    - 需要有效的DeepSeek API Key才能使用AI简报生成功能
    - 推荐使用环境变量 `DEEPSEEK_API_KEY` 配置，避免密钥泄露
    - API调用失败时，简报会显示错误信息，但不影响日报生成
+   - 使用自定义内容模式（`--content`）时同样需要 DeepSeek API Key
 
 6. **Playwright依赖**: 
    - 首次使用CRM自动发布功能时，需要安装Playwright浏览器驱动

@@ -20,14 +20,93 @@ from config import (
 )
 
 
+def _parse_content_arg(argv: list) -> str:
+    """
+    从命令行参数中解析 --content 的值。
+    支持以下写法：
+      --content=今天做了xxx
+      --content 今天做了xxx
+    """
+    for i, arg in enumerate(argv):
+        if arg.startswith('--content='):
+            return arg[len('--content='):]
+        if arg == '--content' and i + 1 < len(argv):
+            return argv[i + 1]
+    return ''
+
+
 def main():
     """主函数"""
     # 检测命令行参数：python main.py auto 则跳过确认直接发布
-    auto_publish = 'auto' in [arg.lower() for arg in sys.argv[1:]]
+    args = sys.argv[1:]
+    auto_publish = 'auto' in [a.lower() for a in args]
+
+    # 解析 --content 自定义内容参数
+    custom_content = _parse_content_arg(args)
 
     print(f"开始生成日报 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("-" * 60)
-    
+
+    # ── 自定义内容模式 ────────────────────────────────────────────────────────
+    if custom_content:
+        print(f"[自定义内容模式] 收到自定义工作内容，跳过 Git 记录获取")
+        print(f"自定义内容: {custom_content}")
+        print("-" * 60)
+
+        report_service = ReportService()
+        deepseek_service = DeepSeekService()
+
+        print("\n正在生成简报（DeepSeek）...")
+        brief = report_service.generate_brief_from_custom_content(custom_content, deepseek_service)
+        brief_path = report_service.save_brief_to_file(brief)
+        print(f"简报已保存到: {brief_path}")
+        print("\n" + "-" * 60)
+        print("简报预览:")
+        print("-" * 60)
+        print(brief)
+        print("-" * 60)
+
+        print(f"\n日报生成完成 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # 发布到 CRM
+        print("\n" + "=" * 60)
+        if auto_publish:
+            print("检测到 auto 参数，直接发布到 CRM 系统...")
+            do_publish = True
+        else:
+            print("是否要自动发布到 CRM 系统? (y/n): ", end="")
+            choice = input().strip().lower()
+            do_publish = choice == 'y'
+
+        if do_publish:
+            print("\n正在登录 CRM 系统...")
+            crm_service = CRMService(CRM_URL, CRM_USERNAME, CRM_PASSWORD)
+            try:
+                if crm_service.login():
+                    print("✓ CRM 登录成功")
+                    print("\n正在发布日报...")
+                    if crm_service.publish_report(brief):
+                        print("\n" + "=" * 60)
+                        print("✓ 日报发布成功！")
+                        print("=" * 60)
+                    else:
+                        print("\n" + "=" * 60)
+                        print("✗ 日报发布失败")
+                        print("=" * 60)
+                else:
+                    print("\n" + "=" * 60)
+                    print("✗ CRM 登录失败")
+                    print("=" * 60)
+            except Exception as e:
+                print(f"\n✗ CRM 发布过程出错: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                crm_service.close()
+        else:
+            print("跳过 CRM 自动发布")
+        return
+
     # 初始化服务
     git_service = GitService()
     report_service = ReportService()
