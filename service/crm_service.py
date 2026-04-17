@@ -242,12 +242,12 @@ class CRMService:
                 
                 # 构建工作汇报页面的完整URL
                 # 从当前URL提取基础路径（例如：https://crm.vankun.cn/crm/）
+                from urllib.parse import urlparse, urljoin
                 current_url = self.page.url
                 if current_url.endswith('/'):
                     base_url = current_url
                 else:
                     # 提取协议和域名部分
-                    from urllib.parse import urlparse, urljoin
                     parsed = urlparse(current_url)
                     base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
                     if not base_url.endswith('/'):
