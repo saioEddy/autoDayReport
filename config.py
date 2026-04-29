@@ -9,7 +9,7 @@ GIT_REPO_SEARCH_PATH = os.environ.get('GIT_REPO_SEARCH_PATH', os.path.expanduser
 
 # 默认 Git 仓库搜索路径列表（无环境变量时使用，main 会过滤存在的目录）
 GIT_SEARCH_PATHS = [
-    os.path.expanduser("E:/JOB/"),
+    os.path.expanduser("/Users/eddy/Documents/"),
     # os.path.expanduser("~/Documents/开发代码"),
 ]
 
@@ -33,7 +33,7 @@ MY_GIT_AUTHORS = [
 # DeepSeek API（优先使用环境变量 DEEPSEEK_API_KEY，避免 key 进仓库）
 DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY', 'sk-91ee266d045e47c28ae1cfeb461ea9d7')
 DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
-DEEPSEEK_MODEL = 'deepseek-chat'
+DEEPSEEK_MODEL = 'deepseek-v4-flash'
 
 # CRM 登录配置
 CRM_URL = "https://crm.vankun.cn/crm/"
