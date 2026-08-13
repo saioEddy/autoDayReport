@@ -16,7 +16,7 @@ from urllib.parse import urlencode, quote
 from urllib.error import HTTPError, URLError
 import json
 
-from config import EXCLUDE_DIRS
+from config import EXCLUDE_DIRS, EXCLUDE_GITLAB_PATHS, EXCLUDE_PATHS
 
 
 class GitService:
@@ -50,10 +50,19 @@ class GitService:
             return []
         
         git_repos = []
+        exclude_paths = {
+            os.path.normpath(os.path.abspath(os.path.expanduser(p)))
+            for p in EXCLUDE_PATHS
+        }
         
         # 递归搜索.git目录，添加异常处理以处理权限问题（Windows常见）
         try:
             for root, dirs, files in os.walk(root_path):
+                root_norm = os.path.normpath(root)
+                if any(root_norm == p or root_norm.startswith(p + os.sep) for p in exclude_paths):
+                    dirs[:] = []
+                    continue
+
                 # 先检查当前目录是否有.git目录（在过滤之前检查）
                 if '.git' in dirs:
                     # 使用os.path.normpath确保路径格式正确（Windows兼容）
@@ -66,7 +75,11 @@ class GitService:
                 exclude_dirs = list(EXCLUDE_DIRS)
                 if sys.platform == "win32":
                     exclude_dirs.extend(["AppData", "Application Data", "Local Settings"])
-                dirs[:] = [d for d in dirs if d not in exclude_dirs]
+                dirs[:] = [
+                    d for d in dirs
+                    if d not in exclude_dirs
+                    and os.path.normpath(os.path.join(root, d)) not in exclude_paths
+                ]
         except PermissionError as e:
             print(f"警告: 访问目录时权限不足: {str(e)}")
         except Exception as e:
@@ -378,6 +391,15 @@ class GitService:
 
         return event_ids | recent_ids
 
+    def _is_gitlab_path_excluded(self, path_with_namespace: str) -> bool:
+        """path_with_namespace 等于或位于 EXCLUDE_GITLAB_PATHS 任一前缀下则排除。"""
+        path = (path_with_namespace or '').strip('/')
+        for prefix in EXCLUDE_GITLAB_PATHS:
+            prefix = prefix.strip('/')
+            if path == prefix or path.startswith(prefix + '/'):
+                return True
+        return False
+
     def get_gitlab_today_commits(
         self,
         gitlab_url: str,
@@ -429,6 +451,9 @@ class GitService:
             proj = self._gitlab_request(gitlab_url, token, f'/projects/{proj_id}')
             proj_name = proj.get('name', str(proj_id)) if proj else str(proj_id)
             proj_path = proj.get('path_with_namespace', proj_name) if proj else proj_name
+            if self._is_gitlab_path_excluded(proj_path):
+                print(f"跳过排除项目: {proj_path}")
+                continue
 
             params: dict = {'since': since, 'until': until, 'all': 'true'}
             commits_raw = self._gitlab_paged_request(
