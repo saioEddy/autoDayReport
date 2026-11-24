@@ -41,6 +41,10 @@ class DeepSeekService:
             ],
             max_tokens=max_tokens,
             stream=False,
+            # 思考会吃掉 max_tokens，正文变成空字符串，简报预览就空白
+            extra_body={"thinking": {"type": "disabled"}},
         )
         text = (resp.choices[0].message.content or "").strip()
+        if not text:
+            raise RuntimeError("DeepSeek 未返回简报正文")
         return text

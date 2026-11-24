@@ -108,6 +108,81 @@ class ReportService:
             return deepseek_service.chat(system=system, user=user, max_tokens=1024)
         except Exception as e:
             return f"[基于昨日提交生成简报失败] {e!r}"
+
+    def load_latest_brief(self) -> Optional[tuple]:
+        """
+        读取今天之前最近一份已保存的简报。
+
+        Returns:
+            (文件路径, 简报正文)；没有可用简报时返回 None
+        """
+        if not os.path.isdir(REPORT_SAVE_DIR):
+            return None
+        prefix, suffix = BRIEF_FILE_FORMAT.split("{date}")
+        today_str = datetime.now().strftime("%Y%m%d")
+        best_date = ""
+        best_path = ""
+        for name in os.listdir(REPORT_SAVE_DIR):
+            if not (name.startswith(prefix) and name.endswith(suffix)):
+                continue
+            date_part = name[len(prefix): len(name) - len(suffix)]
+            if len(date_part) != 8 or not date_part.isdigit():
+                continue
+            if date_part >= today_str or date_part <= best_date:
+                continue
+            best_date = date_part
+            best_path = os.path.join(REPORT_SAVE_DIR, name)
+        if not best_path:
+            return None
+        with open(best_path, encoding="utf-8") as f:
+            content = f.read().strip()
+        if not content:
+            return None
+        return best_path, content
+
+    def _generate_brief_from_last_brief(self, last_brief: str, deepseek_service) -> str:
+        """
+        当天没有本人提交时，用最近一份简报的工作内容生成今日简报。
+        内容要延续上一份工作，但不能原样复制。
+        """
+        format_instruction = (
+            "请严格按照以下格式输出，只包含三个字段，不要添加任何其他内容：\n\n"
+            "*上午时间安排与工作内容\n"
+            "[这里填写上午的工作内容，每条不要带时间，直接写内容。例如：\n"
+            " 1. 优化证书关联关系的逻辑代码\n"
+            " 2. 完成变更管理优化方案的讨论和联调测试]\n\n"
+            "*下午时间安排与工作内容\n"
+            "[这里填写下午的工作内容，每条不要带时间，直接写内容。例如：\n"
+            " 1. 完成变更管理优化方案的讨论和联调测试\n"
+            " 2. 优化证书关联关系的逻辑代码]\n\n"
+            "*今日计划的学习内容与进度\n"
+            "[这里填写今日计划的学习内容和学习进度，例如：学习Spring Boot配置管理相关技术，已完成基础概念学习]\n\n"
+            "注意：\n"
+            "1. 上午和下午的工作内容要基于上一份简报合理分配，但每条内容前不要加时间（禁止 10:20-12:00：、09:00-12:00： 等格式），只写序号和内容，如「1. xxx」「2. xxx」\n"
+            "2. 学习内容要合理，可以基于工作内容推断相关技术学习\n"
+            "3. 只输出这三个字段的内容，不要添加标题、日期等前缀\n"
+            "4. 今日计划的学习内容与进度随机生成,有时生成有时候不生成,占比百分之30生成,百分之70不生成,如果本次不生成,生成一个无\n"
+        )
+        system = (
+            "你是工作日报助手。今天本人没有新的代码提交，需要基于上一份工作简报生成今日简报。\n\n"
+            "**重要要求：**\n"
+            "1. 不能直接复制上一份简报，必须进行创造性改写\n"
+            "2. 体现工作延续，可写成「持续优化」「联调验证」「问题修复」「边界完善」「代码整理」等\n"
+            "3. 改变描述角度和上午下午的分配，不要和上一份完全一致\n"
+            "4. 学习内容要换一个相关但不同的技术点\n"
+            "5. 让内容看起来是今天继续推进的工作，而不是昨天的复述\n\n"
+            f"{BRIEF_SYSTEM_MODIFIER}\n\n"
+            + format_instruction
+        )
+        user = (
+            "上一份工作简报如下，请据此生成今日工作简报，"
+            "要体现延续性，但不能与上一份描述完全相同：\n\n"
+            + last_brief
+        )
+        try:
+            return deepseek_service.chat(system=system, user=user, max_tokens=1024)
+        except Exception as e:
+            return f"[基于最近简报生成失败] {e!r}"
     
     def generate_commit_list(self, commits: List[Dict]) -> str:
         """
@@ -242,8 +317,9 @@ class ReportService:
         """
         根据今日提交生成本人工作简报，格式符合系统要求。
         1. 若本人有提交：根据本人提交记录生成简报；
-        2. 若本人无提交但他人有提交：根据他人提交记录，生成本人「协助他人工作」的简报，且不与他人雷同,不要提及对方提交人；
-        3. 若今日完全无提交且提供了昨天的提交：基于昨天的提交记录创造性生成简报，但不能与昨天完全相同。
+        2. 若本人无提交，且存在更早的简报：用最近一份简报的工作内容改写生成今日简报；
+        3. 若本人无提交、也没有历史简报，但他人有提交：根据他人提交记录，生成本人「协助他人工作」的简报，且不与他人雷同,不要提及对方提交人；
+        4. 若今日完全无提交、也没有历史简报，且提供了昨天的提交：基于昨天的提交记录创造性生成简报，但不能与昨天完全相同。
         
         Args:
             commits: 今日全部提交记录
@@ -260,6 +336,14 @@ class ReportService:
             my_authors.add(my_author)
         my_commits     = [c for c in commits if c.get("author") in my_authors]
         others_commits = [c for c in commits if c.get("author") not in my_authors]
+
+        # 当天没有本人提交时，直接用最近一份简报改写生成今日日报
+        if not my_commits:
+            latest = self.load_latest_brief()
+            if latest:
+                brief_path, brief_content = latest
+                print(f"今日无本人提交，将基于最近一份简报生成今日日报: {os.path.basename(brief_path)}")
+                return self._generate_brief_from_last_brief(brief_content, deepseek_service)
 
         # 如果今日完全无提交，尝试使用昨天的提交记录进行创造性生成
         if not commits and yesterday_commits:
